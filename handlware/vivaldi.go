@@ -10,13 +10,13 @@ import (
 
 const (
 	// Vivaldi参数
-	VivaldiDim         = 3     // 虚拟坐标维度
-	VivaldiCc          = 0.25  // 权重常数
-	VivaldiCe          = 0.5   // 误差权重
-	VivaldiInitError   = 1.0   // 初始误差
-	VivaldiMinError    = 0.01  // 最小误差
-	VivaldiUpdateRound = 100   // 更新轮数
-	VivaldiPeerSetSize = 16    // 每轮选择的邻居数
+	VivaldiDim         = 3    // 虚拟坐标维度
+	VivaldiCc          = 0.25 // 权重常数
+	VivaldiCe          = 0.5  // 误差权重
+	VivaldiInitError   = 1.0  // 初始误差
+	VivaldiMinError    = 0.01 // 最小误差
+	VivaldiUpdateRound = 100  // 更新轮数
+	VivaldiPeerSetSize = 16   // 每轮选择的邻居数
 )
 
 // ==================== Vivaldi坐标更新 ====================
@@ -173,26 +173,6 @@ func GenerateVirtualCoordinate(coords []LatLonCoordinate, rounds int, dim int) [
 	return models
 }
 
-// GenerateRandomVirtualCoordinate 生成随机虚拟坐标（不基于真实RTT）
-// 用于测试或快速初始化
-func GenerateRandomVirtualCoordinate(n int, dim int) []*VivaldiModel {
-	models := make([]*VivaldiModel, n)
-
-	for i := 0; i < n; i++ {
-		models[i] = NewVivaldiModel(i, dim)
-		models[i].LocalCoord.Error = VivaldiMinError
-
-		// 随机坐标
-		for d := 0; d < dim; d++ {
-			models[i].LocalCoord.Vector[d] = RandomBetween01() * 1000
-		}
-		models[i].LocalCoord.Height = RandomBetween01() * 100
-	}
-
-	fmt.Printf("生成随机虚拟坐标完成（%d个节点，%d维）\n", n, dim)
-	return models
-}
-
 // ==================== 坐标质量评估 ====================
 
 // EvaluateCoordinateQuality 评估虚拟坐标的质量
@@ -279,4 +259,3 @@ func ExportVirtualCoordinates(filename string, models []*VivaldiModel) error {
 	fmt.Printf("虚拟坐标导出功能待实现: %s\n", filename)
 	return nil
 }
-

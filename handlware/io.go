@@ -152,6 +152,8 @@ func WriteFigData(filename string, result *TestResult, algoName string) error {
 	defer writer.Flush()
 
 	fmt.Fprintf(writer, "%s, ", algoName)
+	//写入平均带宽
+	fmt.Fprintf(writer, "%.2f, ", result.AvgBandwidth)
 	for i := 0; i < len(result.Latency); i++ {
 		fmt.Fprintf(writer, "%.2f, ", result.Latency[i])
 	}
@@ -349,4 +351,67 @@ func WriteSuccessChildrenCSV(path string, root int, success [][]int) error {
 		fmt.Fprintln(f)
 	}
 	return nil
+}
+
+// WriteXorAnchorRecords 将XOR锚点记录写入CSV文件
+// 参数:
+//   - filename: 输出文件名
+//   - records: XOR锚点记录切片
+//
+// 返回: 错误信息（如果有）
+func WriteXorAnchorRecords(filename string, records []XorAnchorRecord) error {
+	file, err := os.Create(filename)
+	if err != nil {
+		return fmt.Errorf("创建文件失败: %v", err)
+	}
+	defer file.Close()
+
+	// 写入CSV头
+	header := "NodeID,CharPos,UChar,VChar,XorValue,AddedNodeID,BucketID,UGeohash,VGeohash,Description\n"
+	if _, err := file.WriteString(header); err != nil {
+		return fmt.Errorf("写入表头失败: %v", err)
+	}
+
+	// 写入每条记录
+	for _, record := range records {
+		// 生成描述信息
+		description := fmt.Sprintf("字符位%d: '%c' XOR '%c' = %d, 放入桶%d",
+			record.CharPos,
+			record.UChar,
+			record.VChar,
+			record.XorValue,
+			record.BucketID)
+
+		row := fmt.Sprintf("%d,%d,%c,%c,%d,%d,%d,%s,%s,%s\n",
+			record.NodeID,
+			record.CharPos,
+			record.UChar,
+			record.VChar,
+			record.XorValue,
+			record.AddedNodeID,
+			record.BucketID,
+			record.UGeohash,
+			record.VGeohash,
+			description)
+
+		if _, err := file.WriteString(row); err != nil {
+			return fmt.Errorf("写入记录失败: %v", err)
+		}
+	}
+
+	fmt.Printf("✓ XOR锚点记录已保存到 %s，共 %d 条记录\n", filename, len(records))
+	return nil
+}
+
+// XorAnchorRecord 记录XOR锚点添加的详细信息
+type XorAnchorRecord struct {
+	NodeID      int    // 当前节点ID
+	CharPos     int    // 字符位置（0-based）
+	UChar       byte   // 当前节点的字符
+	VChar       byte   // 被添加节点的字符
+	XorValue    int    // XOR值（5/10/15）
+	AddedNodeID int    // 被添加的节点ID
+	BucketID    int    // 放入的K桶编号
+	UGeohash    string // 当前节点的完整Geohash
+	VGeohash    string // 被添加节点的完整Geohash
 }

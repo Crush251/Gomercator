@@ -18,11 +18,11 @@ const (
 	Pi           = math.Pi
 
 	// Mercator专用常量
-	GeoBitsPerChar      = 5  // Geohash每个字符的比特数
-	GeoPrecisionDefault = 4  // 默认Geohash精度
-	K0BucketThreshold   = 15 // K0桶阈值
-	KaryFactorDefault   = 3  // K-ary树分支因子
-	MaxBucketSize       = 10 // K桶最大容量
+	GeoBitsPerChar      = 5   // Geohash每个字符的比特数
+	GeoPrecisionDefault = 2   // 默认Geohash精度
+	K0BucketThreshold   = 999 // K0桶阈值
+	KaryFactorDefault   = 3   // K-ary树分支因子
+	MaxBucketSize       = 6   // K桶最大容量
 
 	// 数据传输参数
 	BandwidthDefault = 33000000.0 // 默认带宽（bps）
@@ -294,4 +294,19 @@ func NewKaryMessage(rootNode int, isKary bool) *KaryMessage {
 		RootNode: rootNode,
 		IsKary:   isKary,
 	}
+}
+
+// ==================== K-Bucket 路由表（Kadcast/ETH） ====================
+
+// KBucketConfig k-bucket 配置参数
+type KBucketConfig struct {
+	K       int // 每桶最大节点数（默认 8）
+	Fanout  int // 转发扇出 F（默认 3）
+	NumBits int // NodeID 位数（128）
+}
+
+// KBucketTable 单个节点的 k-bucket 路由表
+// 用于 Kademlia 风格的路由
+type KBucketTable struct {
+	Buckets [][]int // Buckets[i] 存储桶 i 中的邻居节点 ID（节点索引）
 }

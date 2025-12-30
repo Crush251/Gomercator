@@ -1,0 +1,57 @@
+========== Vivaldi++ 最优参数配置 ==========
+生成时间: 2025-12-30 03:23:36
+
+========== 参数配置 ==========
+Dim: 3
+Cc: 0.250
+Ce: 0.500
+RTTWindow: 15
+CoordWindow: 10
+RMin: 25
+ESwitch: 0.150
+S: 7
+BMin: 3
+P: 0.030
+E0: 0.150
+Tau: 0.100
+EpsMin: 0.150
+Gamma: 0.400
+Fc: 100.0
+Alpha: 2.000
+AnnealRate: 0.300
+AnnealPeriod: 5
+
+========== 误差分布结果 ==========
+平均误差: 0.1335
+中位数误差: 0.1253
+95分位误差: 0.2242
+
+误差分布:
+  <0.1: 2073 (25.9%)
+  0.1-0.2: 5222 (65.3%)
+  0.2-0.4: 696 (8.7%)
+  0.4-0.6: 9 (0.1%)
+  >=0.6: 0 (0.0%)
+
+误差>=0.2节点数: 705 (8.81%)
+评分: 1.9139 (越小越好)
+
+========== Go代码配置 ==========
+const (
+  DefaultDim          = 3
+  DefaultRTTWindow    = 15
+  DefaultCoordWindow  = 10
+  DefaultRMin         = 25
+  DefaultESwitch      = 0.150
+  DefaultS            = 7
+  DefaultBMin         = 3
+  DefaultP            = 0.030
+  DefaultE0           = 0.150
+  DefaultTau          = 0.100
+  DefaultEpsMin       = 0.150
+  DefaultGamma        = 0.400
+  DefaultFc           = 100.0
+  DefaultAlpha        = 2.000
+  DefaultAnnealRate   = 0.300
+  DefaultAnnealPeriod = 5
+)

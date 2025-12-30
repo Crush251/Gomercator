@@ -299,6 +299,7 @@ func Simulation(
 
 			// 单根模拟
 			res := SingleRootSimulation(root, 1, coords, malFlags, leaveFlags, algo, config, clusterResult)
+			
 			_ = WriteSuccessChildrenCSV("success_edges.csv", root, res.SuccessChildren)
 			// 累积结果
 			AccumulateResults(result, res)

@@ -113,8 +113,19 @@ func (m *Mercator) fillKBuckets(n int) {
 	fmt.Println("填充其他K桶...")
 	connections := hw.FillOtherKBuckets(m.KBuckets, m.NodeGeohashBin, m.Coords, m.BucketSize, m.TotalBits)
 	fmt.Printf("其他K桶填充完成，添加%d个连接\n", connections)
-	// 5.1 锚点补齐：确保每个字符位的5个桶里能找到 XOR=5/10 的邻居（每类至少1个）
-	m.EnsureXorAnchors(1) // 每类至少1个
+	// 5.1 锚点补齐：确保每个字符位的5个桶里能找到 XOR=5/10/15 的邻居（每类至少1个）
+	// fmt.Println("补齐XOR锚点...")
+	// xorRecords := m.EnsureXorAnchors(1) // 每类1个
+	// fmt.Printf("XOR锚点补齐完成，共添加%d个锚点\n", len(xorRecords))
+
+	// // 保存XOR锚点记录到CSV文件
+	// if len(xorRecords) > 0 {
+	// 	err := hw.WriteXorAnchorRecords("xor_anchors.csv", xorRecords)
+	// 	if err != nil {
+	// 		fmt.Printf("警告：保存XOR锚点记录失败: %v\n", err)
+	// 	}
+	// }
+
 	// 6. 构建网络连接
 	fmt.Println("构建网络连接...")
 	edges := 0
@@ -143,6 +154,54 @@ func (m *Mercator) ResetVisited() {
 		m.KaryMsgInfo[i].RootNode = -1
 		m.KaryMsgInfo[i].IsKary = false
 	}
+}
+
+// Respond 实现Algorithm接口 - 响应消息
+func (m *Mercator) Respond2(msg *hw.Message) []int {
+	u := msg.Dst
+	relayNodes := make([]int, 0)
+
+	// 如果已访问过，返回空列表
+	if m.Visited[u][msg.Step] {
+		return relayNodes
+	}
+
+	m.Visited[u][msg.Step] = true
+
+	//先把k0桶的节点添加进relayNodes
+	for _, v := range m.KBuckets[u][0] {
+		if v != msg.Src {
+			relayNodes = append(relayNodes, v)
+		}
+	}
+
+	// 策略：K0桶flooding + 跨区域转发
+	if msg.Step == 0 {
+		// 消息源节点：转发所有其他桶
+		for bucketIdx := 1; bucketIdx < len(m.KBuckets[u]); bucketIdx++ {
+			for _, v := range m.KBuckets[u][bucketIdx] {
+				if v != msg.Src {
+					relayNodes = append(relayNodes, v)
+				}
+			}
+		}
+
+	} else {
+		// 非消息源节点
+		// 获取消息源所在的桶号
+		srcBucket := hw.GetGeoBucketIndex(m.NodeGeohash[u], m.NodeGeohash[msg.Src], m.TotalBits)
+
+		// 从小于srcBucket的桶中选择节点转发
+		for bucketIdx := 1; bucketIdx < srcBucket; bucketIdx++ {
+			for _, v := range m.KBuckets[u][bucketIdx] {
+				if v != msg.Src {
+					relayNodes = append(relayNodes, v)
+				}
+			}
+		}
+	}
+
+	return relayNodes
 }
 
 // Respond 实现Algorithm接口 - 响应消息
@@ -196,7 +255,17 @@ func (m *Mercator) Respond(msg *hw.Message) []int {
 					}
 				}
 			}
-
+			// // >>> 新增：字符级 XOR 触发的额外转发
+			// picked := make(map[int]struct{}, len(relayNodes)+4)
+			// for _, v := range relayNodes {
+			// 	picked[v] = struct{}{}
+			// }
+			// extra := m.extraForwardByCharXOR(u, msg.Src, picked)
+			// // fmt.Println("extra:", extra)
+			// // fmt.Scanln()
+			// if len(extra) > 0 {
+			// 	relayNodes = append(relayNodes, extra...)
+			// }
 		}
 
 		// 第二步：从每个非K0桶中选择节点进行传播
@@ -290,15 +359,17 @@ func (m *Mercator) Respond(msg *hw.Message) []int {
 				}
 			}
 		}
-		// >>> 新增：字符级 XOR 触发的额外转发
-		picked := make(map[int]struct{}, len(relayNodes)+4)
-		for _, v := range relayNodes {
-			picked[v] = struct{}{}
-		}
-		extra := m.extraForwardByCharXOR(u, msg.Src, picked)
-		if len(extra) > 0 {
-			relayNodes = append(relayNodes, extra...)
-		}
+		// // >>> 新增：字符级 XOR 触发的额外转发
+		// picked := make(map[int]struct{}, len(relayNodes)+4)
+		// for _, v := range relayNodes {
+		// 	picked[v] = struct{}{}
+		// }
+		// extra := m.extraForwardByCharXOR(u, msg.Src, picked)
+		// // fmt.Println("extra:", extra)
+		// // fmt.Scanln()
+		// if len(extra) > 0 {
+		// 	relayNodes = append(relayNodes, extra...)
+		// }
 	}
 
 	return relayNodes
@@ -428,50 +499,18 @@ func base32IndexByte(b byte) int {
 	return strings.IndexByte(hw.Base32Charset, b) // -1 表示不在 Base32
 }
 
-// hasXorAnchorInBuckets 判断 u 的“字符位 c 的 5 个桶”里是否已有 (XOR == x) 的邻居
-func (m *Mercator) hasXorAnchorInBuckets(u, c, x int) bool {
-	start := c*5 + 1
-	end := start + 4
-	if start > m.TotalBits {
-		return true // 超出范围就不用补
-	}
-	if end > m.TotalBits {
-		end = m.TotalBits
-	}
-	ghu := m.NodeGeohash[u]
-	if len(ghu) <= c {
-		return true
-	}
-	ui := base32IndexByte(ghu[c])
-	if ui < 0 {
-		return true
-	}
-	for b := start; b <= end; b++ {
-		for _, v := range m.KBuckets[u][b] {
-			ghv := m.NodeGeohash[v]
-			if len(ghv) <= c {
-				continue
-			}
-			vi := base32IndexByte(ghv[c])
-			if vi < 0 {
-				continue
-			}
-			if (ui ^ vi) == x {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-// ensureCharXorAnchorsForNode 对单节点 u 的所有字符位，补齐 XOR=5/10 的锚点
-func (m *Mercator) ensureCharXorAnchorsForNode(u int, ensurePerTarget int) {
+// ensureCharXorAnchorsForNode 对单节点 u 的所有字符位，补齐 XOR=5/10/15 的锚点
+// 新策略：在对应字符位的桶中查找XOR=5/10/15的节点，找到后通过异或计算放入相应桶
+// 返回值：添加的锚点记录列表
+func (m *Mercator) ensureCharXorAnchorsForNode(u int, ensurePerTarget int) []hw.XorAnchorRecord {
+	records := make([]hw.XorAnchorRecord, 0)
 	ghu := m.NodeGeohash[u]
 	if ghu == "" {
-		return
+		return records
 	}
 	uBin := hw.ToBinary(ghu)
 
+	// 对每个字符位进行处理（c从0开始，对应第c+1个字符）
 	for c := 0; c < m.GeoPrec; c++ {
 		if len(ghu) <= c {
 			break
@@ -481,16 +520,65 @@ func (m *Mercator) ensureCharXorAnchorsForNode(u int, ensurePerTarget int) {
 			continue
 		}
 
-		for _, x := range []int{5, 10} {
-			if m.hasXorAnchorInBuckets(u, c, x) {
-				continue // 已有则不补
+		// 计算该字符位对应的桶范围
+		// 关键理解：bucket = TotalBits - diffPos
+		// 字符c（0-based）对应bit范围：c*5 到 (c+1)*5-1
+		// 例如：TotalBits=20时
+		//   字符0（bit 0-4）  → bucket 20,19,18,17,16
+		//   字符1（bit 5-9）  → bucket 15,14,13,12,11
+		//   字符2（bit 10-14） → bucket 10,9,8,7,6
+		//   字符3（bit 15-19） → bucket 5,4,3,2,1
+		start := m.TotalBits - (c+1)*5 + 1 // TotalBits - (c+1)*5 + 1
+		end := m.TotalBits - c*5           // TotalBits - c*5
+		if start < 1 {
+			start = 1 // 桶索引从1开始
+		}
+		if end > m.TotalBits {
+			end = m.TotalBits
+		}
+		if start > end {
+			continue // 范围无效
+		}
+
+		// 对每个XOR值（5/10/15），检查是否已有，没有就补充
+		for _, x := range []int{5, 10, 15} {
+			// 先检查该字符位对应的桶中是否已有XOR=x的节点
+			hasXor := false
+			for b := start; b <= end; b++ {
+				for _, v := range m.KBuckets[u][b] {
+					if v == u {
+						continue
+					}
+					ghv := m.NodeGeohash[v]
+					if len(ghv) <= c {
+						continue
+					}
+					vi := base32IndexByte(ghv[c])
+					// 检查第c个字符位置上是否满足XOR=x
+					if vi >= 0 && (ui^vi) == x {
+						hasXor = true
+						break
+					}
+				}
+				if hasXor {
+					break
+				}
 			}
+
+			// 如果已有XOR=x的节点，跳过
+			if hasXor {
+				// fmt.Println("节点", u, "的字符位", c, "已有XOR=", x, "的邻居节点")
+				// fmt.Scanln()
+				continue
+			}
+
+			// 没有，从前缀树查找候选节点
 			wantIdx := ui ^ x
 			if wantIdx < 0 || wantIdx >= 32 {
 				continue
 			}
 
-			// 用前缀树找“同前缀(长度 c)”的候选
+			// 用前缀树找"前c个字符相同"的候选节点
 			prefix := ghu[:c]
 			cands := hw.FindNodesWithPrefix(m.PrefixTree, prefix)
 			filtered := make([]int, 0, len(cands))
@@ -503,34 +591,72 @@ func (m *Mercator) ensureCharXorAnchorsForNode(u int, ensurePerTarget int) {
 					continue
 				}
 				vi := base32IndexByte(ghv[c])
-				if vi < 0 || vi != wantIdx {
-					continue
+				// 在第c个字符位置上满足 XOR=x 的节点
+				if vi >= 0 && vi == wantIdx {
+					filtered = append(filtered, v)
 				}
-				// 前缀一致 + 该字符 XOR 满足；首个不同位必在字符 c 内
-				filtered = append(filtered, v)
 			}
 
-			// 近邻优先
+			// 如果没有找到候选节点，跳过
+			if len(filtered) == 0 {
+				// fmt.Println("节点", u, "的字符位", c, "没有找到", "XOR=", x, "的候选节点")
+				// fmt.Scanln()
+				continue
+			}
+
+			// 近邻优先排序
 			sort.Slice(filtered, func(i, j int) bool {
 				return hw.Distance(m.Coords[u], m.Coords[filtered[i]]) <
 					hw.Distance(m.Coords[u], m.Coords[filtered[j]])
 			})
 
-			// 把这些候选放进正确的桶（依据“全串首不同位”计算桶号）
+			// 通过完整geohash的XOR计算桶号，放入对应的K桶
 			added := 0
 			for _, v := range filtered {
-				diff := hw.FirstDiffBitPos(uBin, hw.ToBinary(m.NodeGeohash[v]))
-				if diff < 0 {
-					continue // 完全相同不该发生（x>0）
+				if added >= ensurePerTarget {
+					break
 				}
+
+				ghv := m.NodeGeohash[v]
+				vBin := hw.ToBinary(ghv)
+
+				// 找到首个不同位（基于完整geohash）
+				diff := hw.FirstDiffBitPos(uBin, vBin)
+				if diff < 0 {
+					continue // 完全相同不该发生
+				}
+
+				// 计算桶号：bucket = TotalBits - diff
 				bucket := m.TotalBits - diff
 				if bucket < 1 || bucket > m.TotalBits {
 					continue
 				}
-				m.KBuckets[u][bucket] = append(m.KBuckets[u][bucket], v)
-				added++
-				if added >= ensurePerTarget {
-					break
+
+				// 检查是否已存在
+				exists := false
+				for _, existing := range m.KBuckets[u][bucket] {
+					if existing == v {
+						exists = true
+						break
+					}
+				}
+				if !exists {
+					m.KBuckets[u][bucket] = append(m.KBuckets[u][bucket], v)
+					added++
+
+					// 记录添加信息
+					record := hw.XorAnchorRecord{
+						NodeID:      u,
+						CharPos:     c,
+						UChar:       ghu[c],
+						VChar:       ghv[c],
+						XorValue:    x,
+						AddedNodeID: v,
+						BucketID:    bucket,
+						UGeohash:    ghu,
+						VGeohash:    ghv,
+					}
+					records = append(records, record)
 				}
 			}
 		}
@@ -540,13 +666,19 @@ func (m *Mercator) ensureCharXorAnchorsForNode(u int, ensurePerTarget int) {
 	for b := 0; b <= m.TotalBits; b++ {
 		m.KBuckets[u][b] = hw.DedupIntsStable(m.KBuckets[u][b])
 	}
+
+	return records
 }
 
 // EnsureXorAnchors 全量补齐锚点（建议在 fillKBuckets 结束后调用一次）
-func (m *Mercator) EnsureXorAnchors(ensurePerTarget int) {
+// 返回值：所有添加的锚点记录
+func (m *Mercator) EnsureXorAnchors(ensurePerTarget int) []hw.XorAnchorRecord {
+	allRecords := make([]hw.XorAnchorRecord, 0)
 	for u := 0; u < m.Graph.N; u++ {
-		m.ensureCharXorAnchorsForNode(u, ensurePerTarget)
+		records := m.ensureCharXorAnchorsForNode(u, ensurePerTarget)
+		allRecords = append(allRecords, records...)
 	}
+	return allRecords
 }
 
 // SetRoot 实现Algorithm接口 - 设置广播根节点

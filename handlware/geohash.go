@@ -352,7 +352,16 @@ func FillK0Bucket(kBuckets [][][]int, geohashGroups map[string][]int) int {
 			}
 		}
 	}
-
+	// //每个节点随机保留15个k0桶的连接
+	// for i := range kBuckets {
+	// 	k0Len := len(kBuckets[i][0])
+	// 	if k0Len > 6 {
+	// 		rand.Shuffle(k0Len, func(a, b int) {
+	// 			kBuckets[i][0][a], kBuckets[i][0][b] = kBuckets[i][0][b], kBuckets[i][0][a]
+	// 		})
+	// 		kBuckets[i][0] = kBuckets[i][0][:6]
+	// 	}
+	// }
 	return pairCount
 }
 
