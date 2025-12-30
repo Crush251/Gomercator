@@ -77,27 +77,8 @@ func main() {
 	// fmt.Println("步骤 3/6: 生成虚拟坐标和聚类...")
 	// fmt.Println("----------------------------------------")
 
-	// ====== 对比测试：标准 Vivaldi vs Vivaldi++ ======
-	fmt.Println("\n========================================")
-	fmt.Println("  性能对比测试：标准 Vivaldi vs Vivaldi++")
-	fmt.Println("========================================\n")
-
-	// 1. 测试标准 Vivaldi
-	fmt.Println("【测试 1/2】标准 Vivaldi")
-	fmt.Println("----------------------------------------")
-	vmodels := handlware.GenerateVirtualCoordinate(coords, 100, 3)
-	fmt.Println()
-
-	// 2. 测试 Vivaldi++（优化版）
-	fmt.Println("【测试 2/2】Vivaldi++（优化版）")
-	fmt.Println("----------------------------------------")
-	config := handlware.NewVivaldiPlusPlusConfig()
-	config.RandSeed = 100 // 使用相同种子保证公平对比
-	vmodelsplusplus := handlware.GenerateVirtualCoordinatePlusPlus(coords, 100, config)
-	fmt.Println()
-
-	// ====== 可选：使用虚拟坐标进行传播测试 ======
-	// 取消注释以下代码来测试传播性能
+	// fmt.Println("生成Vivaldi虚拟坐标...")
+	// vmodels := handlware.GenerateVirtualCoordinate(coords, 100, 3)
 
 	// fmt.Println("\n【传播测试】使用标准 Vivaldi 坐标")
 	// clusterResult := handlware.KMeansVirtual(vmodels, 8, 100, 13)
