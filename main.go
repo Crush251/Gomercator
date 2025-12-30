@@ -77,29 +77,35 @@ func main() {
 	// fmt.Println("步骤 3/6: 生成虚拟坐标和聚类...")
 	// fmt.Println("----------------------------------------")
 
-	// fmt.Println("生成Vivaldi虚拟坐标...")
-	// vmodels := handlware.GenerateVirtualCoordinate(coords, 100, 3)
+	// ====== 对比测试：标准 Vivaldi vs Vivaldi++ ======
+	fmt.Println("\n========================================")
+	fmt.Println("  性能对比测试：标准 Vivaldi vs Vivaldi++")
+	fmt.Println("========================================\n")
 
-	// fmt.Println("基于虚拟坐标进行K-means聚类...")
+	// 1. 测试标准 Vivaldi
+	fmt.Println("【测试 1/2】标准 Vivaldi")
+	fmt.Println("----------------------------------------")
+	vmodels := handlware.GenerateVirtualCoordinate(coords, 100, 3)
+	fmt.Println()
+
+	// 2. 测试 Vivaldi++（优化版）
+	fmt.Println("【测试 2/2】Vivaldi++（优化版）")
+	fmt.Println("----------------------------------------")
+	config := handlware.NewVivaldiPlusPlusConfig()
+	config.RandSeed = 100 // 使用相同种子保证公平对比
+	vmodelsplusplus := handlware.GenerateVirtualCoordinatePlusPlus(coords, 100, config)
+	fmt.Println()
+
+	// ====== 可选：使用虚拟坐标进行传播测试 ======
+	// 取消注释以下代码来测试传播性能
+
+	// fmt.Println("\n【传播测试】使用标准 Vivaldi 坐标")
 	// clusterResult := handlware.KMeansVirtual(vmodels, 8, 100, 13)
+	// runMercury(n, coords, vmodels, clusterResult, 1, attackConfig, simConfig)
 	// fmt.Println()
 
-	// // 5. 运行 Mercury 算法
-	// fmt.Println("步骤 4/6: 运行 MERCURY 算法...")
-	// fmt.Println("----------------------------------------")
-	// runMercury(n, coords, vmodels, clusterResult, reptTime, attackConfig, simConfig)
-	// fmt.Println()
-
-	// config := handlware.NewVivaldiPlusPlusConfig()
-	// handlware.GenerateVirtualCoordinatePlusPlus(coords, 100, config)
-	// fmt.Println("生成Vivaldi++虚拟坐标完成")
-	// fmt.Println("基于虚拟坐标进行K-means聚类...")
+	// fmt.Println("【传播测试】使用 Vivaldi++ 坐标")
 	// clusterResultplusplus := handlware.KMeansVirtual(vmodelsplusplus, 8, 100, 13)
-	// fmt.Println()
-
-	// //5. 运行 Mercury (Vivaldi++)算法
-	// fmt.Println("步骤 4/6: 运行 MERCURY (Vivaldi++)算法...")
-	// fmt.Println("----------------------------------------")
 	// runMercury(n, coords, vmodelsplusplus, clusterResultplusplus, 1, attackConfig, simConfig)
 
 	// fmt.Println()

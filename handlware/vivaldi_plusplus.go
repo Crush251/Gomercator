@@ -14,23 +14,23 @@ import (
 const (
 	// 默认配置参数
 	DefaultDim                 = 3     // 默认维度
-	DefaultRTTWindow           = 15    // RTT历史窗口大小 M
-	DefaultCoordWindow         = 15    // 坐标历史窗口大小 W
-	DefaultRMin                = 20    // 最小轮数（阶段切换条件1）
-	DefaultESwitch             = 0.15  // 误差切换门限
-	DefaultS                   = 7     // 持续轮数（误差需持续满足S轮）
-	DefaultBMin                = 3     // 最小稳定节点数
-	DefaultP                   = 0.03  // 震荡阈值 2%
-	DefaultE0                  = 0.15  // 稳定节点误差上限
-	DefaultTau                 = 0.1   // λ裕量（可设为0）
-	DefaultEpsMin              = 0.1   // 权重下限
-	DefaultGamma               = 0.4   // 不稳定节点权重
-	DefaultFc                  = 100.0 // 冻结上限（最大位移）
-	DefaultAlpha               = 2.00  // λ衰减参数alpha
-	DefaultAnnealRate          = 0.30  // 退火衰减率
-	DefaultAnnealPeriod        = 5     // 退火周期（每T轮衰减一次）
-	FixedNeighborSetSize       = 128   // 固定邻居集合大小
-	NeighborSampleSizePerRound = 16    // 每轮从固定邻居中采样的数量
+	DefaultRTTWindow           = 5     // RTT历史窗口大小 M（减小以适应采样频率）
+	DefaultCoordWindow         = 8     // 坐标历史窗口大小 W（减小以加快响应）
+	DefaultRMin                = 15    // 最小轮数（减小以更早切换）
+	DefaultESwitch             = 0.20  // 误差切换门限（放宽条件）
+	DefaultS                   = 3     // 持续轮数（减小以更容易切换）
+	DefaultBMin                = 2     // 最小稳定节点数
+	DefaultP                   = 0.05  // 震荡阈值 5%（放宽稳定判定）
+	DefaultE0                  = 0.20  // 稳定节点误差上限（放宽）
+	DefaultTau                 = 0.05  // λ裕量（减小以减少降权）
+	DefaultEpsMin              = 0.3   // 权重下限（提高以避免过度衰减）
+	DefaultGamma               = 0.7   // 不稳定节点权重（提高以避免过度降权）
+	DefaultFc                  = 150.0 // 冻结上限（增大以允许更大移动）
+	DefaultAlpha               = 1.00  // λ衰减参数alpha（减小以减少惩罚）
+	DefaultAnnealRate          = 0.50  // 退火衰减率（提高以减缓衰减）
+	DefaultAnnealPeriod        = 10    // 退火周期（增大以减缓退火）
+	FixedNeighborSetSize       = 128   // 固定邻居集合大小（减小以提高采样频率）
+	NeighborSampleSizePerRound = 48    // 每轮从固定邻居中采样的数量（增大以加快收敛）
 )
 
 // ==================== 配置结构体 ====================
@@ -38,9 +38,10 @@ const (
 // VivaldiPlusPlusConfig Vivaldi++ 配置参数
 type VivaldiPlusPlusConfig struct {
 	// 基础参数
-	Dim int     // 虚拟坐标维度
-	Cc  float64 // Vivaldi权重常数
-	Ce  float64 // 误差权重
+	Dim      int     // 虚拟坐标维度
+	Cc       float64 // Vivaldi权重常数
+	Ce       float64 // 误差权重
+	RandSeed int64   // 伪随机数种子（保证可重复性）
 
 	// 窗口大小
 	RTTWindow   int // RTT历史窗口M
@@ -72,12 +73,13 @@ type VivaldiPlusPlusConfig struct {
 	Fc float64 // 最大位移上限
 }
 
-// NewDefaultConfig 创建默认配置
+// NewVivaldiPlusPlusConfig 创建默认配置
 func NewVivaldiPlusPlusConfig() *VivaldiPlusPlusConfig {
 	return &VivaldiPlusPlusConfig{
 		Dim:          DefaultDim,
 		Cc:           VivaldiCc,
 		Ce:           VivaldiCe,
+		RandSeed:     100, // 默认种子（保证可重复性）
 		RTTWindow:    DefaultRTTWindow,
 		CoordWindow:  DefaultCoordWindow,
 		RMin:         DefaultRMin,
@@ -517,10 +519,13 @@ func ObservePlusPlus(state *VivaldiPlusPlusState, peerID int, peerCoord *Vivaldi
 		wBase = 0.0
 	}
 
-	// 节点级权重
-	wNode := state.NeighborHistory.wNode[peerID]
-	if wNode == 0 {
-		wNode = 1.0 // 默认权重
+	// 节点级权重（仅在Late阶段启用，避免Early阶段过度降权）
+	wNode := 1.0
+	if state.Phase == "LATE" {
+		nodeWeight := state.NeighborHistory.wNode[peerID]
+		if nodeWeight > 0 {
+			wNode = nodeWeight
+		}
 	}
 
 	// TIV权重（Late阶段启用）
@@ -561,6 +566,8 @@ func ObservePlusPlus(state *VivaldiPlusPlusState, peerID int, peerCoord *Vivaldi
 	}
 
 	// 合成总权重
+	// Early阶段：只用基础权重（避免过度衰减）
+	// Late阶段：应用稳定性降权和TIV降权
 	W := wBase * wNode * wTIV
 
 	// 更新误差估计
@@ -618,9 +625,12 @@ func GenerateVirtualCoordinatePlusPlus(coords []LatLonCoordinate, rounds int, co
 		config = NewVivaldiPlusPlusConfig()
 	}
 
-	fmt.Printf("开始生成Vivaldi++虚拟坐标（%d轮，%d维）...\n", rounds, config.Dim)
-	fmt.Printf("配置: R_min=%d, e_switch=%.2f, S=%d, B_min=%d, τ=%.3f\n",
-		config.RMin, config.ESwitch, config.S, config.BMin, config.Tau)
+	// 设置伪随机数种子（保证实验可重复性）
+	rand.Seed(config.RandSeed)
+
+	fmt.Printf("开始生成Vivaldi++虚拟坐标（%d轮，%d维，种子=%d）...\n", rounds, config.Dim, config.RandSeed)
+	fmt.Printf("配置: 固定邻居=%d, 每轮采样=%d, R_min=%d, e_switch=%.2f, RTT窗口=%d\n",
+		FixedNeighborSetSize, NeighborSampleSizePerRound, config.RMin, config.ESwitch, config.RTTWindow)
 
 	// 初始化所有节点的状态
 	states := make([]*VivaldiPlusPlusState, n)
@@ -660,6 +670,12 @@ func GenerateVirtualCoordinatePlusPlus(coords []LatLonCoordinate, rounds int, co
 	}
 	avgNeighbors := float64(totalNeighbors) / float64(n)
 	fmt.Printf("固定邻居集合初始化完成，平均每节点 %.1f 个固定邻居\n", avgNeighbors)
+
+	// 计算采样效率
+	samplingRate := float64(NeighborSampleSizePerRound) / float64(FixedNeighborSetSize)
+	expectedRoundsForHistory := float64(config.RTTWindow) / samplingRate
+	fmt.Printf("采样效率分析：采样率=%.1f%%, 预计%.1f轮积累RTT历史（窗口=%d）\n",
+		samplingRate*100, expectedRoundsForHistory, config.RTTWindow)
 
 	// 统计信息
 	switchRounds := make([]int, 0)
@@ -853,23 +869,24 @@ func GenerateVirtualCoordinatePlusPlus(coords []LatLonCoordinate, rounds int, co
 	fmt.Printf("  0.4-0.6: %d (%.1f%%)\n", errorCount["0.4-0.6"], float64(errorCount["0.4-0.6"])*100/float64(n))
 	fmt.Printf("  >=0.6: %d (%.1f%%)\n", errorCount[">=0.6"], float64(errorCount[">=0.6"])*100/float64(n))
 
-	// // 2. 阶段切换统计
-	// if len(switchRounds) > 0 {
-	// 	avgSwitchRound := 0.0
-	// 	for _, r := range switchRounds {
-	// 		avgSwitchRound += float64(r)
-	// 	}
-	// 	avgSwitchRound /= float64(len(switchRounds))
-	// 	fmt.Printf("\n阶段切换统计:\n")
-	// 	fmt.Printf("  切换节点数: %d/%d\n", len(switchRounds), n)
-	// 	fmt.Printf("  平均切换轮数: %.1f\n", avgSwitchRound)
-	// 	fmt.Printf("  最早切换: %d\n", switchRounds[0])
-	// 	if len(switchRounds) > 1 {
-	// 		fmt.Printf("  最晚切换: %d\n", switchRounds[len(switchRounds)-1])
-	// 	}
-	// } else {
-	// 	fmt.Printf("\n阶段切换统计: 无节点切换到Late阶段\n")
-	// }
+	// 2. 阶段切换统计
+	if len(switchRounds) > 0 {
+		avgSwitchRound := 0.0
+		for _, r := range switchRounds {
+			avgSwitchRound += float64(r)
+		}
+		avgSwitchRound /= float64(len(switchRounds))
+		fmt.Printf("\n阶段切换统计:\n")
+		fmt.Printf("  切换节点数: %d/%d (%.1f%%)\n", len(switchRounds), n, float64(len(switchRounds))*100/float64(n))
+		fmt.Printf("  平均切换轮数: %.1f\n", avgSwitchRound)
+		sort.Ints(switchRounds)
+		fmt.Printf("  最早切换: 第%d轮\n", switchRounds[0])
+		if len(switchRounds) > 1 {
+			fmt.Printf("  最晚切换: 第%d轮\n", switchRounds[len(switchRounds)-1])
+		}
+	} else {
+		fmt.Printf("\n阶段切换统计: ⚠️ 无节点切换到Late阶段（可能需要放宽切换条件）\n")
+	}
 
 	// // 3. 稳定节点集合大小趋势
 	// if len(stableSetSizes) > 0 {
@@ -1269,6 +1286,9 @@ func GenerateVirtualCoordinatePlusPlusSilent(coords []LatLonCoordinate, rounds i
 	if config == nil {
 		config = NewVivaldiPlusPlusConfig()
 	}
+
+	// 设置伪随机数种子（保证实验可重复性）
+	rand.Seed(config.RandSeed)
 
 	// 初始化所有节点的状态
 	states := make([]*VivaldiPlusPlusState, n)
